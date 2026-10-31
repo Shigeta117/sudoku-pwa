@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#3730a3" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <rect x="76" y="76" width="360" height="360" rx="32" fill="#ffffff" fill-opacity="0.1" stroke="#ffffff" stroke-width="14" />
+  <line x1="196" y1="76" x2="196" y2="436" stroke="#ffffff" stroke-width="10" stroke-opacity="0.85" />
+  <line x1="316" y1="76" x2="316" y2="436" stroke="#ffffff" stroke-width="10" stroke-opacity="0.85" />
+  <line x1="76" y1="196" x2="436" y2="196" stroke="#ffffff" stroke-width="10" stroke-opacity="0.85" />
+  <line x1="76" y1="316" x2="436" y2="316" stroke="#ffffff" stroke-width="10" stroke-opacity="0.85" />
+  <text x="136" y="158" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="800" fill="#ffffff" text-anchor="middle">9</text>
+  <text x="256" y="278" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="800" fill="#a5b4fc" text-anchor="middle">5</text>
+  <text x="376" y="398" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="800" fill="#ffffff" text-anchor="middle">1</text>
+</svg>
