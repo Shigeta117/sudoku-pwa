@@ -1018,7 +1018,7 @@ export default function App() {
       {/* Bottom Controls: Action Bar + Number Keypad */}
       <footer className="w-full max-w-md mx-auto px-3 pt-1 pb-2 flex flex-col gap-2 shrink-0">
         {/* Mode Switcher & Tool Actions */}
-        <div className="grid grid-cols-6 gap-1.5">
+        <div className="grid grid-cols-5 gap-1.5">
           <button
             type="button"
             onClick={handleUndo}
@@ -1091,33 +1091,6 @@ export default function App() {
             </span>
             <Pencil className="w-4 h-4 mb-0.5" />
             <span className="text-[10px] font-semibold">メモ</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              const next: InputMethod =
-                inputMethod === 'cell-first' ? 'number-first' : 'cell-first';
-              setInputMethod(next);
-              updateSettings({ defaultInputMethod: next });
-              triggerHaptic(settings.vibrationEnabled, 8);
-            }}
-            className={`relative flex flex-col items-center justify-center py-2 rounded-xl border active:scale-95 transition shadow-sm ${
-              inputMethod === 'number-first'
-                ? 'bg-amber-500 border-amber-400 text-white shadow-amber-500/20'
-                : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200'
-            }`}
-            aria-label="入力方式切替（セル優先 / 数字連続ロック）"
-            title="セル優先 / 数字ロック連続入力の切替"
-          >
-            {inputMethod === 'number-first' ? (
-              <Hash className="w-4 h-4 mb-0.5" />
-            ) : (
-              <Grid className="w-4 h-4 mb-0.5" />
-            )}
-            <span className="text-[10px] font-semibold">
-              {inputMethod === 'number-first' ? '数字先' : 'マス先'}
-            </span>
           </button>
         </div>
 
@@ -1403,7 +1376,7 @@ export default function App() {
       {/* Settings Modal */}
       {showSettingsModal ? (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl animate-pop-in">
+          <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl animate-pop-in">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
@@ -1451,6 +1424,68 @@ export default function App() {
                     >
                       <Icon className="w-3.5 h-3.5" />
                       <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Input Method */}
+            <div className="mb-4">
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
+                入力の順番
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {(
+                  [
+                    {
+                      id: 'cell-first',
+                      label: 'マスを選んでから数字',
+                      icon: Grid,
+                      note: 'マスをタップし、下の数字を押して入れる。普通の入力方法です。',
+                    },
+                    {
+                      id: 'number-first',
+                      label: '数字を選んでからマス',
+                      icon: Hash,
+                      note: '下の数字を押すと選ばれたままになり、タップしたマスに次々入る。同じ数字をまとめて置くときに速い。もう一度押すと解除。',
+                    },
+                  ] as Array<{
+                    id: InputMethod;
+                    label: string;
+                    icon: React.ComponentType<{ className?: string }>;
+                    note: string;
+                  }>
+                ).map((item) => {
+                  const Icon = item.icon;
+                  const active = inputMethod === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setInputMethod(item.id);
+                        setActiveNumber(null);
+                        updateSettings({ defaultInputMethod: item.id });
+                      }}
+                      aria-pressed={active}
+                      className={`text-left p-2.5 rounded-xl border transition ${
+                        active
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
+                          : 'border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      <div
+                        className={`flex items-center gap-1.5 text-xs font-semibold ${
+                          active ? 'text-indigo-600 dark:text-indigo-400' : ''
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{item.label}</span>
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                        {item.note}
+                      </div>
                     </button>
                   );
                 })}
