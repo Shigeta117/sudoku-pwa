@@ -1,102 +1,67 @@
-# Zen Sudoku — 完全広告なし・スマホ最適化PWAナンプレ（数独）
+# Zen Sudoku — 広告なし・スマホ向けナンプレ（数独）
 
-スマートフォンのブラウザおよびPWA（ホーム画面への追加・オフライン動作）に最適化した、広告ゼロのモダンなナンプレ（数独）Webアプリケーションです。
+**遊ぶ: https://shigeta117.github.io/sudoku-pwa/**
 
----
+広告なし・登録なしで遊べるナンプレ（数独）の Web アプリです。スマートフォンのブラウザで開き、「ホーム画面に追加」するとアプリのように全画面で起動し、オフラインでも遊べます（PWA）。
 
-## 主な特徴
+## 特徴
 
-1. **完全広告なし・オフライン完結（PWA対応）**
-   - `manifest.webmanifest` とキャッシュ戦略を備えた Service Worker (`public/sw.js`) を搭載。
-   - iOS Safari / Android Chrome の「ホーム画面に追加」からネイティブアプリのように全画面（Standalone）で起動し、機内モード等のオフライン環境でもそのまま遊べます。
-2. **スマホ特化の1画面完結レイアウト (`100dvh`)**
-   - 画面高 `100dvh` 内にヘッダー・盤面・操作ツールバー・1〜9テンキーを収め、プレイ中の不要な縦スクロールやダブルタップ拡大（`touch-action: manipulation`）を完全に防止しています。
-3. **唯一解保証の高速パズル生成エンジン（Web Worker対応）**
-   - Easy（初級）/ Medium（中級）/ Hard（上級）/ Expert（達人）の4段階。
-   - MRVヒューリスティック付きバックトラッキング検証により、**必ず解が1つだけ（唯一解）**であることを保証します。Web Worker上で非同期生成するため、スマホのUIスレッドをブロックしません。
-4. **充実の操作・アシスト機能**
-   - **通常入力 / メモ入力（候補数字）** のワンタップ切替
-   - **マス先（Cell-First）** と **数字先（Number-First 連続入力）** の2つの入力モード切替
-   - **自動メモ消去**（数字確定時、同じ行・列・3×3ブロック内の同一候補メモを自動削除、設定でON/OFF可能）
-   - **Undo / Redo（無制限の履歴管理）** と **消去（消しゴム）**
-   - **視認性アシスト**: 選択マスの行・列・3×3ブロックのハイライト、同じ数字の一括強調、9個配置完了した数字のテンキー完了チェック＆減光表示
-   - **リアルタイム自動保存**: `localStorage` に盤面・メモ・経過時間・履歴をリアルタイム保存し、リロードやアプリ再起動時も即座に中断箇所から再開可能
-   - **ダークモード / ライトモード**: OS連動（自動）・ライト・ダークのワンタップ切替
+- **解き方の難しさで分けた 5 段階の難易度**
+  ヒントの数ではなく、解くのに必要な一番難しい解き方で難易度を決めています。どの問題も解は 1 つだけで、勘で埋める必要はありません。
 
----
+  | 難易度 | 必要な解き方 |
+  |---|---|
+  | 初級 | シングルだけ |
+  | 中級 | ブロックと行・列の関係（ポインティング）まで |
+  | 上級 | ペア・トリプル・X-Wing まで |
+  | 達人 | Y-Wing などウイング系まで |
+  | 鬼 | チェーン系（XY-Chain・AIC） |
 
-## ディレクトリ構成
+- **解き方を教えるヒント**：次に決まるマスを枠で示し、使う解き方の名前（「隠れたシングル」「X-Wing」など）を表示します。もう一度押すと答えの数字が出ます。間違った数字があれば先にそれを知らせます。
+- **入力**：通常入力とメモ（候補数字）、マス先と数字先（同じ数字を続けて置く）の切り替え、自動メモ消去、無制限に近い戻す／進む（直近 300 手）、消しゴム。
+- **見やすさ**：選んだマスの行・列・ブロック、同じ数字、間違い（オフにもできる）を色で示します。9 個置き終えた数字はテンキーで薄くなります。
+- **自動保存**：盤面・メモ・時間・履歴を端末内（localStorage）に保存し、閉じても続きから再開できます。データはどこにも送信しません。
+- **ダークモード**：OS に合わせる／ライト／ダーク。
+
+キーボード：`1`〜`9` 入力、`0`/`Backspace` 消去、`N` メモ切替、`H` ヒント、矢印で移動、`Ctrl+Z`/`Ctrl+Shift+Z` 戻す／進む。
+
+## 開発
+
+Node.js 20 以上。
+
+```bash
+npm install
+npm run dev      # 開発サーバー（http://localhost:5173）
+npm test         # テスト（Vitest）
+npm run build    # dist/ に本番ビルド
+npm run preview  # ビルド結果の確認（Service Worker の動作もここで確認）
+```
+
+`main` に push すると GitHub Actions がテスト・ビルドして GitHub Pages に公開します（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）。`vite.config.ts` の `base` は相対パス（`./`）なので、Vercel などのドメイン直下にもそのまま置けます。
+
+### 構成
 
 ```text
-.
-├── index.html                  # エントリHTML（モバイルビューポート・PWAメタタグ設定済）
-├── package.json                # 依存パッケージ・スクリプト定義
-├── postcss.config.js           # PostCSS設定
-├── tailwind.config.js          # Tailwind CSS設定（ダークモード・アニメーション定義）
-├── tsconfig.json               # TypeScript設定
-├── vercel.json                 # Vercelゼロコンフィグデプロイ設定
-├── vite.config.ts              # Viteビルド設定
-├── public/
-│   ├── manifest.webmanifest    # PWA Web App Manifest
-│   ├── sw.js                   # オフライン対応 Service Worker
-│   └── icons/                  # PWA用アプリアイコン一式 (192px, 512px, maskable, Apple Touch Icon, SVG)
-└── src/
-    ├── main.tsx                # Reactマウント & Service Worker登録
-    ├── index.css               # Tailwind読込 & 100dvh / touch-action 制御
-    ├── App.tsx                 # メインUI・状態管理・キーボード/タッチ操作
-    ├── types/
-    │   └── sudoku.ts           # 型定義
-    └── utils/
-        ├── sudokuEngine.ts     # 唯一解保証ナンプレ生成・ソルバー・盤面検証ロジック
-        ├── puzzleWorkerClient.ts # 非同期Web Worker生成クライアント
-        └── storage.ts          # localStorage 自動保存・統計管理・Haptics振動制御
+src/
+├── App.tsx                     画面・状態管理・キーボード操作
+├── sw.js                       オフライン用 Service Worker の雛形（ビルド時に版と配布ファイルを埋め込んで dist/sw.js に出力）
+├── types/sudoku.ts             型と難易度の一覧
+└── utils/
+    ├── sudokuEngine.ts         難易度の定義・問題生成（sudoku-core）・盤面の判定
+    ├── puzzle.worker.ts        問題生成を UI と別スレッドで動かす Web Worker
+    ├── puzzleWorkerClient.ts   Worker の呼び出しと、次の 1 問の先読み
+    ├── hint.ts                 ヒントの計算と解き方の日本語名
+    ├── history.ts              戻す／進むの履歴（上限つき）
+    └── storage.ts              保存データの読み書きと検証・統計・振動
+public/
+├── manifest.webmanifest        PWA の設定
+└── third-party-licenses.txt    同梱している依存パッケージのライセンス
 ```
 
----
+## クレジット
 
-## ローカル環境での起動手順
+問題の生成・難易度の判定・ヒントには [sudoku-core](https://github.com/komeilmehranfar/sudoku-core)（MIT, © Komeil Mehranfar）を使っています。同梱している依存パッケージのライセンス全文は [public/third-party-licenses.txt](public/third-party-licenses.txt) にあります。
 
-Node.js (v18以上推奨) がインストールされた環境で、プロジェクトルートにて以下のコマンドを実行してください。
+## ライセンス
 
-```bash
-# 1. 依存パッケージのインストール
-npm install
-
-# 2. 開発サーバーの起動 (http://localhost:5173)
-npm run dev
-```
-
-本番用ビルドおよびローカルでの動作確認（Service Workerの動作確認含む）を行う場合：
-
-```bash
-# 本番ビルド (`dist/` ディレクトリに出力されます)
-npm run build
-
-# ビルド成果物のローカルプレビュー
-npm run preview
-```
-
----
-
-## Vercelへのデプロイ手順
-
-本プロジェクトはルート直下に `package.json`, `vite.config.ts`, `vercel.json` を配置しているため、設定変更なしでそのままデプロイ可能です。
-
-### 方法A: GitHubリポジトリ連携（推奨）
-1. このZIPファイルを解凍し、中身を新しく作成したGitHubリポジトリのルートへPushします。
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit: Zen Sudoku PWA"
-   git branch -M main
-   git remote add origin https://github.com/<あなたのユーザー名>/<リポジトリ名>.git
-   git push -u origin main
-   ```
-2. [Vercel](https://vercel.com/) にログインし、**「Add New...」→「Project」** を選択します。
-3. 先ほどPushしたGitHubリポジトリを **Import** します。
-4. Framework Preset が自動的に **Vite** として認識されます（Build Command: `npm run build`, Output Directory: `dist`）。そのまま **「Deploy」** をクリックすれば数十秒で公開完了です。
-
-### 方法B: Vercel CLI からの直接デプロイ
-```bash
-npx vercel
-```
+[MIT](LICENSE)

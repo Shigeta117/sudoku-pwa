@@ -1,4 +1,12 @@
-export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'master';
+
+export const DIFFICULTIES: readonly Difficulty[] = [
+  'easy',
+  'medium',
+  'hard',
+  'expert',
+  'master',
+];
 
 export type InputMethod = 'cell-first' | 'number-first';
 
@@ -46,6 +54,7 @@ export interface SavedGameState {
   historyIndex: number;
   elapsedSeconds: number;
   mistakes: number;
+  hintsUsed?: number;
   isCompleted: boolean;
   lastUpdatedAt: number;
 }

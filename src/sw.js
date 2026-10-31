@@ -1,19 +1,29 @@
-const CACHE_NAME = 'zen-sudoku-cache-v1';
+// Template: vite.config.ts (serviceWorker plugin) fills in the placeholders at build time.
+// Every build changes this file, so browsers install the new worker and `activate` drops old caches.
+const CACHE_NAME = 'zen-sudoku-__BUILD_ID__';
+// Relative URLs resolve against this script's location, so the app works at / and under /sudoku-pwa/
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/icons/icon.svg',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-maskable-512.png',
-  '/icons/apple-touch-icon.png',
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icons/icon.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
+  './icons/apple-touch-icon.png',
+  // Hashed JS/CSS/worker files of this build, so the game works offline right after the first visit
+  ...__BUILD_ASSETS__,
 ];
+const INDEX_URL = new URL('./index.html', self.location).href;
+
+async function precache() {
+  const cache = await caches.open(CACHE_NAME);
+  // Bypass the HTTP cache so a just-deployed index.html is not stored stale
+  await cache.addAll(PRECACHE_ASSETS.map((url) => new Request(url, { cache: 'reload' })));
+}
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS))
-  );
+  event.waitUntil(precache());
   self.skipWaiting();
 });
 
@@ -41,11 +51,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone));
+          // Never let a 404/5xx page replace the cached app shell
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(INDEX_URL, clone));
+          }
           return response;
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match(INDEX_URL))
     );
     return;
   }

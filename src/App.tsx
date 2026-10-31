@@ -17,11 +17,13 @@ import {
   Trophy,
   Grid,
   Hash,
+  Lightbulb,
   X,
 } from 'lucide-react';
 import {
   BoardSnapshot,
   CellData,
+  DIFFICULTIES,
   Difficulty,
   InputMethod,
   SavedGameState,
@@ -36,7 +38,9 @@ import {
   getDigitCounts,
   isBoardSolved,
 } from './utils/sudokuEngine';
-import { generatePuzzleAsync } from './utils/puzzleWorkerClient';
+import { generatePuzzleAsync, prefetchPuzzle } from './utils/puzzleWorkerClient';
+import { pushHistory } from './utils/history';
+import { HintResult, findHint } from './utils/hint';
 import {
   DEFAULT_STATS,
   formatTime,
@@ -128,6 +132,18 @@ export default function App() {
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [isNewBestTime, setIsNewBestTime] = useState<boolean>(false);
   const [isGenerating, setIsGenerating] = useState<boolean>(true);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  // Only the latest requested puzzle may be applied (older workers can finish later)
+  const generationIdRef = useRef(0);
+
+  // Hint is tied to the board it was computed for; any move invalidates it
+  const [hintState, setHintState] = useState<{
+    board: CellData[][];
+    result: HintResult;
+    revealed: boolean;
+  } | null>(null);
+  const [hintsUsed, setHintsUsed] = useState<number>(0);
+  const [showVictoryModal, setShowVictoryModal] = useState<boolean>(false);
 
   // Modals
   const [showNewGameModal, setShowNewGameModal] = useState<boolean>(false);
@@ -168,82 +184,126 @@ export default function App() {
   // Start a fresh puzzle of the specified difficulty
   const startNewGame = useCallback(
     async (targetDifficulty: Difficulty) => {
+      const generationId = ++generationIdRef.current;
       setIsGenerating(true);
       setShowNewGameModal(false);
-      setIsPaused(false);
-      setIsCompleted(false);
-      setIsNewBestTime(false);
+      setShowVictoryModal(false);
+      setStatusMessage(null);
 
-      const { puzzle, solution } = await generatePuzzleAsync(targetDifficulty);
-      const initialBoard = buildInitialBoard(puzzle, solution);
-      const initialSnapshot = createSnapshot(initialBoard);
+      let generated;
+      try {
+        generated = await generatePuzzleAsync(targetDifficulty);
+      } catch {
+        if (generationId !== generationIdRef.current) return;
+        setIsGenerating(false);
+        setStatusMessage('パズルの生成に失敗しました。もう一度お試しください');
+        return;
+      }
+      // A newer request was made while this one was running: drop this result
+      if (generationId !== generationIdRef.current) return;
 
+      const initialBoard = buildInitialBoard(generated.puzzle, generated.solution);
       setDifficulty(targetDifficulty);
       setBoard(initialBoard);
-      setHistory([initialSnapshot]);
+      setHistory([createSnapshot(initialBoard)]);
       setHistoryIndex(0);
       setElapsedSeconds(0);
       setMistakes(0);
+      setHintsUsed(0);
+      setHintState(null);
       setSelectedCell(null);
       setActiveNumber(null);
+      setIsPaused(false);
+      setIsCompleted(false);
+      setIsNewBestTime(false);
       prevUnitsRef.current = getCompletedUnits(initialBoard);
       setIsGenerating(false);
 
       const updatedStats = recordGameStart(targetDifficulty);
       setStats(updatedStats);
+      prefetchPuzzle(targetDifficulty);
     },
     []
   );
 
-  // Initial load: restore from localStorage or generate a new Easy game
+  // Initial load: restore from localStorage or generate a new game
   useEffect(() => {
     const saved = loadSavedGame();
-    if (saved && !saved.isCompleted && saved.board.length === 9) {
+    if (saved && !saved.isCompleted) {
       setDifficulty(saved.difficulty);
       setBoard(evaluateBoardErrors(saved.board));
       setHistory(
-        saved.history && saved.history.length > 0
-          ? saved.history
-          : [createSnapshot(saved.board)]
+        saved.history.length > 0 ? saved.history : [createSnapshot(saved.board)]
       );
-      setHistoryIndex(
-        typeof saved.historyIndex === 'number' ? saved.historyIndex : 0
-      );
-      setElapsedSeconds(saved.elapsedSeconds || 0);
-      setMistakes(saved.mistakes || 0);
+      setHistoryIndex(saved.history.length > 0 ? saved.historyIndex : 0);
+      setElapsedSeconds(saved.elapsedSeconds);
+      setMistakes(saved.mistakes);
+      setHintsUsed(saved.hintsUsed ?? 0);
       setIsCompleted(false);
       prevUnitsRef.current = getCompletedUnits(saved.board);
       setIsGenerating(false);
+      prefetchPuzzle(saved.difficulty);
     } else {
-      startNewGame('easy');
+      startNewGame(saved?.difficulty ?? 'easy');
     }
   }, [startNewGame]);
 
   // Persist game state on every change
+  // Latest savable state; declared before the save effects so it is current when they run
+  const latestSaveRef = useRef<SavedGameState | null>(null);
   useEffect(() => {
-    if (isGenerating || board.length !== 9) return;
-    const stateToSave: SavedGameState = {
-      version: 1,
-      difficulty,
-      board,
-      history,
-      historyIndex,
-      elapsedSeconds,
-      mistakes,
-      isCompleted,
-      lastUpdatedAt: Date.now(),
-    };
-    saveGameState(stateToSave);
+    latestSaveRef.current =
+      isGenerating || board.length !== 9
+        ? null
+        : {
+            version: 1,
+            difficulty,
+            board,
+            history,
+            historyIndex,
+            elapsedSeconds,
+            mistakes,
+            hintsUsed,
+            isCompleted,
+            lastUpdatedAt: Date.now(),
+          };
   }, [
     board,
     difficulty,
     elapsedSeconds,
+    hintsUsed,
     history,
     historyIndex,
     isCompleted,
     isGenerating,
     mistakes,
   ]);
+
+  const flushSave = useCallback(() => {
+    if (latestSaveRef.current) saveGameState(latestSaveRef.current);
+  }, []);
+
+  // Save on every move, but not on every timer tick (the history can be large)
+  useEffect(() => {
+    flushSave();
+  }, [board, difficulty, hintsUsed, history, historyIndex, isCompleted, isGenerating, mistakes, flushSave]);
+
+  // Elapsed time: every 10 s, and whenever the page is hidden or closed
+  useEffect(() => {
+    if (elapsedSeconds > 0 && elapsedSeconds % 10 === 0) flushSave();
+  }, [elapsedSeconds, flushSave]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushSave();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushSave);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushSave);
+    };
+  }, [flushSave]);
 
   // Game timer (pauses automatically when modal open, tab hidden, paused, or completed)
   useEffect(() => {
@@ -277,12 +337,7 @@ export default function App() {
   // Count how many of each digit (1-9) are completed on the board
   const digitCounts = useMemo(() => getDigitCounts(board), [board]);
 
-  // If activeNumber becomes completed (all 9 placed), clear or advance it in number-first mode
-  useEffect(() => {
-    if (activeNumber && digitCounts[activeNumber] >= 9) {
-      // keep it selectable for highlighting, or if in number-first mode leave until user taps another
-    }
-  }, [activeNumber, digitCounts]);
+  const activeHint = hintState && hintState.board === board ? hintState : null;
 
   // Check unit completion animations and game victory
   const handlePostMoveEffects = useCallback(
@@ -322,6 +377,7 @@ export default function App() {
 
       if (isBoardSolved(nextBoard)) {
         setIsCompleted(true);
+        setShowVictoryModal(true);
         triggerHaptic(settings.vibrationEnabled, [30, 50, 30, 50, 60]);
         const { stats: updatedStats, isNewBest } = recordGameWin(
           difficulty,
@@ -341,8 +397,8 @@ export default function App() {
       const target = board[r]?.[c];
       if (!target || target.given) return;
 
-      // Prevent editing an already-correct confirmed digit unless erasing
-      if (!isNoteMode && target.value === target.solution) return;
+      // A correct digit is final: neither a digit nor a note may overwrite it (erase still can)
+      if (target.value === target.solution) return;
 
       const nextBoard = board.map((row) =>
         row.map((cell) => ({ ...cell, notes: [...cell.notes] }))
@@ -350,7 +406,7 @@ export default function App() {
       const cell = nextBoard[r][c];
 
       if (isNoteMode) {
-        // Don't place notes on a cell that already has a value
+        // Taking notes on a wrong digit replaces it
         if (cell.value !== 0) {
           cell.value = 0;
         }
@@ -399,12 +455,11 @@ export default function App() {
       }
 
       const evaluated = evaluateBoardErrors(nextBoard);
-      const snapshot = createSnapshot(evaluated);
-      const nextHistory = [...history.slice(0, historyIndex + 1), snapshot];
+      const pushed = pushHistory(history, historyIndex, createSnapshot(evaluated));
 
       setBoard(evaluated);
-      setHistory(nextHistory);
-      setHistoryIndex(nextHistory.length - 1);
+      setHistory(pushed.history);
+      setHistoryIndex(pushed.index);
 
       if (!isNoteMode && evaluated[r][c].value !== 0) {
         handlePostMoveEffects(evaluated, r, c);
@@ -426,12 +481,12 @@ export default function App() {
 
   // Erase cell value & notes
   const handleErase = useCallback(() => {
-    if (isPaused || isCompleted || !selectedCell) return;
+    if (isPaused || isCompleted || isGenerating || !selectedCell) return;
     const [r, c] = selectedCell;
     const target = board[r]?.[c];
     if (!target || target.given) return;
     if (target.value === 0 && target.notes.length === 0) return;
-    // Do not erase already-correct confirmed digits? Users often want to clear notes or wrong digits, allow clearing any non-given cell:
+    // Any non-given cell can be cleared, including a correct digit
     const nextBoard = board.map((row) =>
       row.map((cell) => ({ ...cell, notes: [...cell.notes] }))
     );
@@ -439,18 +494,19 @@ export default function App() {
     nextBoard[r][c].notes = [];
 
     const evaluated = evaluateBoardErrors(nextBoard);
-    const snapshot = createSnapshot(evaluated);
-    const nextHistory = [...history.slice(0, historyIndex + 1), snapshot];
+    const pushed = pushHistory(history, historyIndex, createSnapshot(evaluated));
 
     setBoard(evaluated);
-    setHistory(nextHistory);
-    setHistoryIndex(nextHistory.length - 1);
+    setHistory(pushed.history);
+    setHistoryIndex(pushed.index);
+    prevUnitsRef.current = getCompletedUnits(evaluated);
     triggerHaptic(settings.vibrationEnabled, 10);
   }, [
     board,
     history,
     historyIndex,
     isCompleted,
+    isGenerating,
     isPaused,
     selectedCell,
     settings.vibrationEnabled,
@@ -458,7 +514,7 @@ export default function App() {
 
   // Undo
   const handleUndo = useCallback(() => {
-    if (isPaused || isCompleted || historyIndex <= 0) return;
+    if (isPaused || isCompleted || isGenerating || historyIndex <= 0) return;
     const targetIndex = historyIndex - 1;
     const restored = applySnapshot(board, history[targetIndex]);
     setBoard(restored);
@@ -470,13 +526,14 @@ export default function App() {
     history,
     historyIndex,
     isCompleted,
+    isGenerating,
     isPaused,
     settings.vibrationEnabled,
   ]);
 
   // Redo
   const handleRedo = useCallback(() => {
-    if (isPaused || isCompleted || historyIndex >= history.length - 1) return;
+    if (isPaused || isCompleted || isGenerating || historyIndex >= history.length - 1) return;
     const targetIndex = historyIndex + 1;
     const restored = applySnapshot(board, history[targetIndex]);
     setBoard(restored);
@@ -488,6 +545,7 @@ export default function App() {
     history,
     historyIndex,
     isCompleted,
+    isGenerating,
     isPaused,
     settings.vibrationEnabled,
   ]);
@@ -495,7 +553,7 @@ export default function App() {
   // Handle tapping a cell on the 9x9 board
   const handleCellTap = useCallback(
     (r: number, c: number) => {
-      if (isPaused || isCompleted) return;
+      if (isPaused || isCompleted || isGenerating) return;
       const tappedCell = board[r]?.[c];
       if (!tappedCell) return;
 
@@ -508,7 +566,8 @@ export default function App() {
         }
       }
 
-      if (tappedCell.value !== 0) {
+      // In number-first mode the locked digit must not change by tapping a filled cell
+      if (tappedCell.value !== 0 && inputMethod === 'cell-first') {
         setActiveNumber(tappedCell.value);
       }
       triggerHaptic(settings.vibrationEnabled, 5);
@@ -519,15 +578,34 @@ export default function App() {
       board,
       inputMethod,
       isCompleted,
+      isGenerating,
       isPaused,
       settings.vibrationEnabled,
     ]
   );
 
+  // Hint: 1st press shows the cell and the technique, 2nd press on the same board reveals the digit
+  const handleHint = useCallback(() => {
+    if (isPaused || isCompleted || isGenerating || board.length !== 9) return;
+    if (activeHint) {
+      if (activeHint.result.kind === 'step' && !activeHint.revealed) {
+        setHintState({ ...activeHint, revealed: true });
+      }
+      return;
+    }
+    const result = findHint(board);
+    setHintState({ board, result, revealed: false });
+    if (result.kind === 'step') {
+      setHintsUsed((n) => n + 1);
+      setSelectedCell(result.cell);
+    }
+    triggerHaptic(settings.vibrationEnabled, 8);
+  }, [activeHint, board, isCompleted, isGenerating, isPaused, settings.vibrationEnabled]);
+
   // Handle tapping a digit (1-9) on the bottom keypad
   const handleNumberTap = useCallback(
     (num: number) => {
-      if (isPaused || isCompleted) return;
+      if (isPaused || isCompleted || isGenerating) return;
 
       if (inputMethod === 'number-first') {
         setActiveNumber((prev) => (prev === num ? null : num));
@@ -548,6 +626,7 @@ export default function App() {
       applyInputToCell,
       inputMethod,
       isCompleted,
+      isGenerating,
       isPaused,
       selectedCell,
       settings.vibrationEnabled,
@@ -567,6 +646,17 @@ export default function App() {
         return;
       }
 
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) handleRedo();
+        else handleUndo();
+        return;
+      }
+      // Leave browser / OS shortcuts (Ctrl+1, Alt+←, Cmd+N ...) alone
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Holding a digit key would toggle the cell on every repeat
+      if (e.repeat) return;
+
       if (e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         handleNumberTap(Number(e.key));
@@ -582,17 +672,20 @@ export default function App() {
         setIsNoteMode((prev) => !prev);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+      if (e.key.toLowerCase() === 'h') {
         e.preventDefault();
-        if (e.shiftKey) handleRedo();
-        else handleUndo();
+        handleHint();
         return;
       }
       if (
         ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)
       ) {
         e.preventDefault();
-        const [cr, cc] = selectedCell || [4, 4];
+        if (!selectedCell) {
+          setSelectedCell([4, 4]);
+          return;
+        }
+        const [cr, cc] = selectedCell;
         let nr = cr;
         let nc = cc;
         if (e.key === 'ArrowUp') nr = (cr + 8) % 9;
@@ -607,6 +700,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     handleErase,
+    handleHint,
     handleNumberTap,
     handleRedo,
     handleUndo,
@@ -729,7 +823,10 @@ export default function App() {
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/95 dark:bg-slate-900/95 z-20">
               <div className="w-9 h-9 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3" />
               <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                唯一解パズルを生成中...
+                パズルを生成中...
+              </p>
+              <p className="mt-1 text-[11px] text-slate-400">
+                上級以上は数秒かかることがあります
               </p>
             </div>
           ) : null}
@@ -792,6 +889,18 @@ export default function App() {
                 const cellKey = `${rIdx}-${cIdx}`;
                 const isJustPlaced = lastPlacedCell === cellKey;
                 const isFlashing = flashingCells.has(cellKey);
+                const hintResult = activeHint?.result;
+                const isHintCell =
+                  hintResult?.kind === 'step' &&
+                  hintResult.cell[0] === rIdx &&
+                  hintResult.cell[1] === cIdx;
+                const isHintMistake =
+                  hintResult?.kind === 'mistake' &&
+                  hintResult.cells.some(([hr, hc]) => hr === rIdx && hc === cIdx);
+                const revealedDigit =
+                  isHintCell && activeHint?.revealed && hintResult?.kind === 'step'
+                    ? hintResult.digit
+                    : null;
 
                 // Borders for 3x3 blocks
                 const borderRight =
@@ -839,9 +948,19 @@ export default function App() {
                     onClick={() => handleCellTap(rIdx, cIdx)}
                     className={`relative flex items-center justify-center p-0 focus:outline-none transition-colors duration-100 ${borderRight} ${borderBottom} ${bgClass} ${
                       isFlashing ? 'animate-line-glow' : ''
+                    } ${
+                      isHintCell
+                        ? 'ring-2 ring-inset ring-amber-500'
+                        : isHintMistake
+                        ? 'ring-2 ring-inset ring-rose-500'
+                        : ''
                     }`}
                   >
-                    {cell.value !== 0 ? (
+                    {revealedDigit !== null && cell.value === 0 ? (
+                      <span className="text-[clamp(1.05rem,4.3vw,1.65rem)] leading-none font-semibold text-amber-500/80">
+                        {revealedDigit}
+                      </span>
+                    ) : cell.value !== 0 ? (
                       <span
                         className={`text-[clamp(1.05rem,4.3vw,1.65rem)] leading-none ${textClass} ${
                           isJustPlaced ? 'animate-pop-in' : ''
@@ -876,12 +995,30 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {/* One-line status: hint explanation or generation error (fixed height, no layout shift) */}
+        <p
+          className="h-5 mt-1.5 w-full text-center text-[11px] leading-5 truncate text-slate-600 dark:text-slate-300"
+          role="status"
+          aria-live="polite"
+        >
+          {statusMessage ??
+            (activeHint?.result.kind === 'mistake'
+              ? `間違っている数字が ${activeHint.result.cells.length} 個あります（赤枠）`
+              : activeHint?.result.kind === 'step'
+              ? `${activeHint.result.techniques.join(' → ')} で枠のマスが決まります${
+                  activeHint.revealed ? `（答え ${activeHint.result.digit}）` : '。もう一度で答え'
+                }`
+              : activeHint?.result.kind === 'none'
+              ? 'ヒントが見つかりませんでした'
+              : '')}
+        </p>
       </main>
 
       {/* Bottom Controls: Action Bar + Number Keypad */}
       <footer className="w-full max-w-md mx-auto px-3 pt-1 pb-2 flex flex-col gap-2 shrink-0">
         {/* Mode Switcher & Tool Actions */}
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-6 gap-1.5">
           <button
             type="button"
             onClick={handleUndo}
@@ -919,6 +1056,18 @@ export default function App() {
 
           <button
             type="button"
+            onClick={handleHint}
+            disabled={isPaused || isCompleted || isGenerating}
+            className="flex flex-col items-center justify-center py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-35 active:scale-95 transition shadow-sm"
+            aria-label="ヒント"
+            title="ヒント（H）"
+          >
+            <Lightbulb className="w-4 h-4 mb-0.5" />
+            <span className="text-[10px] font-semibold">ヒント</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => {
               setIsNoteMode((prev) => !prev);
               triggerHaptic(settings.vibrationEnabled, 8);
@@ -932,7 +1081,7 @@ export default function App() {
             aria-pressed={isNoteMode}
           >
             <span
-              className={`absolute top-1 right-1.5 text-[9px] font-bold px-1 rounded ${
+              className={`absolute top-0.5 right-0.5 text-[8px] leading-tight font-bold px-0.5 rounded ${
                 isNoteMode
                   ? 'bg-white/20 text-white'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
@@ -1022,9 +1171,17 @@ export default function App() {
       </footer>
 
       {/* Victory Modal */}
-      {isCompleted ? (
+      {isCompleted && showVictoryModal ? (
         <div className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl text-center animate-pop-in">
+          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl text-center animate-pop-in">
+            <button
+              type="button"
+              onClick={() => setShowVictoryModal(false)}
+              className="absolute top-3 right-3 p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="閉じて盤面を見る"
+            >
+              <X className="w-5 h-5" />
+            </button>
             <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500">
               <Trophy className="w-8 h-8" />
             </div>
@@ -1066,6 +1223,11 @@ export default function App() {
                 </div>
                 <div className="text-base font-extrabold font-mono mt-0.5">
                   {mistakes}
+                  {hintsUsed > 0 ? (
+                    <span className="block text-[10px] font-medium text-slate-400">
+                      ヒント {hintsUsed}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1106,10 +1268,10 @@ export default function App() {
               </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              すべてのパズルは必ず「唯一解（解が1つだけ）」になるよう検証・生成されます。
+              解が1つだけのパズルを、解くのに必要な解き方の難しさで5段階に分けています。勘で埋める必要はありません。
             </p>
             <div className="flex flex-col gap-2">
-              {(['easy', 'medium', 'hard', 'expert'] as Difficulty[]).map(
+              {DIFFICULTIES.map(
                 (diff) => {
                   const cfg = DIFFICULTY_CONFIG[diff];
                   const dStat = stats[diff];
@@ -1132,7 +1294,7 @@ export default function App() {
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          初期ヒント数: {cfg.clues}マス
+                          {cfg.techniques}
                         </div>
                       </div>
                       <div className="text-right">
@@ -1170,7 +1332,7 @@ export default function App() {
             </div>
 
             <div className="flex flex-col gap-2.5">
-              {(['easy', 'medium', 'hard', 'expert'] as Difficulty[]).map(
+              {DIFFICULTIES.map(
                 (diff) => {
                   const cfg = DIFFICULTY_CONFIG[diff];
                   const s = stats[diff];
@@ -1345,6 +1507,23 @@ export default function App() {
                   checked={settings.highlightPeerAreas}
                   onChange={(e) =>
                     updateSettings({ highlightPeerAreas: e.target.checked })
+                  }
+                  className="w-4 h-4 accent-indigo-600 rounded"
+                />
+              </label>
+
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <div className="font-semibold text-xs">間違いを赤で表示</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    正解と違う数字をすぐに知らせる（オフで自力チェック）
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.highlightConflicts}
+                  onChange={(e) =>
+                    updateSettings({ highlightConflicts: e.target.checked })
                   }
                   className="w-4 h-4 accent-indigo-600 rounded"
                 />
