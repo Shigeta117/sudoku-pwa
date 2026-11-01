@@ -1,5 +1,8 @@
-import { STRATEGY, hint } from 'sudoku-core';
+import { STRATEGY, TACTICS, hint } from 'sudoku-core';
 import { CellData } from '../types/sudoku';
+import { lessonForStrategy } from './dojoLessons';
+
+const RANK = new Map<string, number>(TACTICS.map((t) => [t.title, t.rank]));
 
 const TECHNIQUE_JA: Record<string, string> = {
   [STRATEGY.OPEN_SINGLES]: 'オープンシングル（残り1マス）',
@@ -37,13 +40,25 @@ const TECHNIQUE_JA: Record<string, string> = {
   [STRATEGY.NISHIO]: '仮定法（ニシオ）',
 };
 
+/** Japanese name; the dojo's lesson title when there is one, so hints and lessons use the same words. */
 export function techniqueName(strategy: string): string {
-  return TECHNIQUE_JA[strategy] ?? strategy.replace(/ Strategy$/, '');
+  return (
+    lessonForStrategy(strategy)?.title ??
+    TECHNIQUE_JA[strategy] ??
+    strategy.replace(/ Strategy$/, '')
+  );
 }
 
 export type HintResult =
   | { kind: 'mistake'; cells: Array<[number, number]> }
-  | { kind: 'step'; cell: [number, number]; digit: number; techniques: string[] }
+  | {
+      kind: 'step';
+      cell: [number, number];
+      digit: number;
+      techniques: string[];
+      /** Dojo lesson for the hardest technique used, if the dojo teaches it */
+      lessonId: string | null;
+    }
   | { kind: 'none' };
 
 /**
@@ -69,12 +84,15 @@ export function findHint(board: CellData[][]): HintResult {
   for (let i = steps.length - 1; i >= 0; i--) {
     const placed = steps[i].updates.find((u) => u.filledValue !== undefined);
     if (placed && placed.filledValue !== undefined) {
-      const techniques = [...new Set(steps.slice(0, i + 1).map((s) => techniqueName(s.strategy)))];
+      const used = steps.slice(0, i + 1).map((s) => s.strategy);
+      const techniques = [...new Set(used.map(techniqueName))];
+      const hardest = used.reduce((a, b) => ((RANK.get(b) ?? 0) > (RANK.get(a) ?? 0) ? b : a));
       return {
         kind: 'step',
         cell: [Math.floor(placed.index / 9), placed.index % 9],
         digit: placed.filledValue,
         techniques,
+        lessonId: lessonForStrategy(hardest)?.id ?? null,
       };
     }
   }

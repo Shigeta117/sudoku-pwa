@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Pause,
   Play,
@@ -8,7 +8,7 @@ import {
   Pencil,
   BarChart2,
   Settings,
-  PlusCircle,
+  GraduationCap,
   Sparkles,
   Check,
   Sun,
@@ -41,6 +41,7 @@ import {
 import { generatePuzzleAsync, prefetchPuzzle } from './utils/puzzleWorkerClient';
 import { pushHistory } from './utils/history';
 import { HintResult, findHint } from './utils/hint';
+import { DojoErrorBoundary } from './components/dojo/DojoErrorBoundary';
 import {
   DEFAULT_STATS,
   formatTime,
@@ -54,6 +55,8 @@ import {
   saveStats,
   triggerHaptic,
 } from './utils/storage';
+
+const DojoView = lazy(() => import('./components/dojo/DojoView'));
 
 function createSnapshot(board: CellData[][]): BoardSnapshot {
   return {
@@ -149,6 +152,8 @@ export default function App() {
   const [showNewGameModal, setShowNewGameModal] = useState<boolean>(false);
   const [showStatsModal, setShowStatsModal] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  // Technique dojo: null = closed, otherwise the lesson to open (null id = lesson list)
+  const [dojo, setDojo] = useState<{ lessonId: string | null } | null>(null);
 
   // Subtle animation states
   const [lastPlacedCell, setLastPlacedCell] = useState<string | null>(null);
@@ -313,7 +318,8 @@ export default function App() {
       isCompleted ||
       showNewGameModal ||
       showStatsModal ||
-      showSettingsModal
+      showSettingsModal ||
+      dojo !== null
     ) {
       return;
     }
@@ -332,6 +338,7 @@ export default function App() {
     showNewGameModal,
     showStatsModal,
     showSettingsModal,
+    dojo,
   ]);
 
   // Count how many of each digit (1-9) are completed on the board
@@ -641,7 +648,8 @@ export default function App() {
         isCompleted ||
         showNewGameModal ||
         showStatsModal ||
-        showSettingsModal
+        showSettingsModal ||
+        dojo !== null
       ) {
         return;
       }
@@ -710,6 +718,7 @@ export default function App() {
     showNewGameModal,
     showSettingsModal,
     showStatsModal,
+    dojo,
   ]);
 
   // Determine the number currently highlighted across the board
@@ -788,12 +797,12 @@ export default function App() {
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setShowNewGameModal(true)}
+            onClick={() => setDojo({ lessonId: null })}
             className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 active:scale-95 transition"
-            aria-label="新しいパズル"
-            title="新しいパズル"
+            aria-label="解法道場"
+            title="解法道場（解き方を学ぶ）"
           >
-            <PlusCircle className="w-5 h-5" />
+            <GraduationCap className="w-5 h-5" />
           </button>
           <button
             type="button"
@@ -997,22 +1006,36 @@ export default function App() {
         </div>
 
         {/* One-line status: hint explanation or generation error (fixed height, no layout shift) */}
-        <p
-          className="h-5 mt-1.5 w-full text-center text-[11px] leading-5 truncate text-slate-600 dark:text-slate-300"
-          role="status"
-          aria-live="polite"
-        >
-          {statusMessage ??
-            (activeHint?.result.kind === 'mistake'
-              ? `間違っている数字が ${activeHint.result.cells.length} 個あります（赤枠）`
-              : activeHint?.result.kind === 'step'
-              ? `${activeHint.result.techniques.join(' → ')} で枠のマスが決まります${
-                  activeHint.revealed ? `（答え ${activeHint.result.digit}）` : '。もう一度で答え'
-                }`
-              : activeHint?.result.kind === 'none'
-              ? 'ヒントが見つかりませんでした'
-              : '')}
-        </p>
+        <div className="h-5 mt-1.5 w-full flex items-center justify-center gap-1.5">
+          <p
+            className="min-w-0 text-[11px] leading-5 truncate text-slate-600 dark:text-slate-300"
+            role="status"
+            aria-live="polite"
+          >
+            {statusMessage ??
+              (activeHint?.result.kind === 'mistake'
+                ? `間違っている数字が ${activeHint.result.cells.length} 個あります（赤枠）`
+                : activeHint?.result.kind === 'step'
+                ? `${activeHint.result.techniques.join(' → ')}で枠のマスが決まる${
+                    activeHint.revealed ? `（答え ${activeHint.result.digit}）` : '（もう一度で答え）'
+                  }`
+                : activeHint?.result.kind === 'none'
+                ? 'ヒントが見つかりませんでした'
+                : '')}
+          </p>
+          {!statusMessage && activeHint?.result.kind === 'step' && activeHint.result.lessonId ? (
+            <button
+              type="button"
+              onClick={() =>
+                activeHint.result.kind === 'step' &&
+                setDojo({ lessonId: activeHint.result.lessonId })
+              }
+              className="shrink-0 px-1.5 rounded-md text-[11px] leading-5 font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50"
+            >
+              解説
+            </button>
+          ) : null}
+        </div>
       </main>
 
       {/* Bottom Controls: Action Bar + Number Keypad */}
@@ -1371,6 +1394,14 @@ export default function App() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {dojo ? (
+        <DojoErrorBoundary onClose={() => setDojo(null)}>
+          <Suspense fallback={null}>
+            <DojoView initialLessonId={dojo.lessonId} onClose={() => setDojo(null)} />
+          </Suspense>
+        </DojoErrorBoundary>
       ) : null}
 
       {/* Settings Modal */}
