@@ -45,6 +45,9 @@ export interface UserSettings {
   highlightConflicts: boolean;
   vibrationEnabled: boolean;
   defaultInputMethod: InputMethod;
+  /** ドパガキモード: pachinko-style effects layer */
+  fxMode: boolean;
+  fxSound: boolean;
 }
 
 /** A game that is not a plain difficulty: it skips the stats and shows its own label. */

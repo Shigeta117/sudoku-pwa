@@ -44,6 +44,7 @@ import { SEVENTEEN_BANDS, pickChallengePuzzle } from './utils/puzzlePool';
 import { pushHistory } from './utils/history';
 import { HintResult, findHint } from './utils/hint';
 import { DojoErrorBoundary } from './components/dojo/DojoErrorBoundary';
+import { emitFx } from './fx/fxBus';
 import {
   DEFAULT_STATS,
   formatTime,
@@ -59,6 +60,8 @@ import {
 } from './utils/storage';
 
 const DojoView = lazy(() => import('./components/dojo/DojoView'));
+// Loaded only when ドパガキモード is on
+const FxLayer = lazy(() => import('./fx/FxLayer'));
 
 function createSnapshot(board: CellData[][]): BoardSnapshot {
   return {
@@ -243,6 +246,7 @@ export default function App() {
       setIsNewBestTime(false);
       prevUnitsRef.current = getCompletedUnits(initialBoard);
       setIsGenerating(false);
+      emitFx({ type: 'start' });
 
       if (activeChallenge) return;
       const updatedStats = recordGameStart(targetDifficulty);
@@ -383,6 +387,20 @@ export default function App() {
       });
       prevUnitsRef.current = newUnits;
 
+      // ドパガキモード (no listener when it is off). On the winning move only the jackpot plays.
+      const solved = isBoardSolved(nextBoard);
+      if (nextBoard[r][c].value === nextBoard[r][c].solution) {
+        emitFx({ type: 'place', row: r, col: c });
+        if (!solved) {
+          emitFx({ type: 'units', units: newlyCompleted });
+          const remaining = nextBoard.flat().filter((cell) => cell.value !== cell.solution).length;
+          emitFx({ type: 'remaining', count: remaining });
+        }
+      } else {
+        emitFx({ type: 'miss', row: r, col: c });
+      }
+      if (solved) emitFx({ type: 'win' });
+
       if (newlyCompleted.length > 0) {
         const flashSet = new Set<string>();
         newlyCompleted.forEach((unit) => {
@@ -406,7 +424,7 @@ export default function App() {
         window.setTimeout(() => setFlashingCells(new Set()), 650);
       }
 
-      if (isBoardSolved(nextBoard)) {
+      if (solved) {
         setIsCompleted(true);
         setShowVictoryModal(true);
         triggerHaptic(settings.vibrationEnabled, [30, 50, 30, 50, 60]);
@@ -983,6 +1001,7 @@ export default function App() {
                     key={cellKey}
                     type="button"
                     role="gridcell"
+                    data-fx-cell={`${rIdx}-${cIdx}`}
                     aria-selected={isSelected}
                     aria-label={`行${rIdx + 1} 列${cIdx + 1} ${
                       cell.value ? `値${cell.value}` : '空'
@@ -1460,6 +1479,12 @@ export default function App() {
         </div>
       ) : null}
 
+      {settings.fxMode ? (
+        <Suspense fallback={null}>
+          <FxLayer sound={settings.fxSound} />
+        </Suspense>
+      ) : null}
+
       {dojo ? (
         <DojoErrorBoundary onClose={() => setDojo(null)}>
           <Suspense fallback={null}>
@@ -1684,6 +1709,34 @@ export default function App() {
                   className="w-4 h-4 accent-indigo-600 rounded"
                 />
               </label>
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <div className="font-semibold text-xs">ドパガキモード</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    正解するたびに玉が出て、連チャン・確変・リーチ・大当たりの演出が入ります。画面全体が光るのは 1 秒に 2 回まで。端末で「視差効果を減らす」をオンにしていると、揺れと光を止めます。
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.fxMode}
+                  onChange={(e) => updateSettings({ fxMode: e.target.checked })}
+                  className="w-4 h-4 accent-indigo-600 rounded shrink-0 ml-3"
+                />
+              </label>
+              {settings.fxMode ? (
+                <label className="mt-3 flex items-center justify-between cursor-pointer">
+                  <div className="font-semibold text-xs">効果音</div>
+                  <input
+                    type="checkbox"
+                    checked={settings.fxSound}
+                    onChange={(e) => updateSettings({ fxSound: e.target.checked })}
+                    className="w-4 h-4 accent-indigo-600 rounded"
+                  />
+                </label>
+              ) : null}
             </div>
 
             <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end">

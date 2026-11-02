@@ -22,6 +22,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   highlightConflicts: true,
   vibrationEnabled: true,
   defaultInputMethod: 'cell-first',
+  fxMode: false,
+  fxSound: true,
 };
 
 export const DEFAULT_STATS: StatsRecord = {
