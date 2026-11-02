@@ -109,3 +109,28 @@ describe('effects font subset', () => {
     expect([...missing].join('')).toBe('');
   });
 });
+
+describe('pre-rendered logos', () => {
+  const files = import.meta.glob('../../public/fx/logos/*.webp', { query: '?url', import: 'default', eager: true });
+
+  it('every logo in the list has a rendered file (scripts/fx-logos/build.mjs)', async () => {
+    const { FX_LOGOS } = await import('./logos');
+    const missing = FX_LOGOS.filter((l) => !(`../../public/fx/logos/${l.id}.webp` in files)).map((l) => l.id);
+    expect(missing).toEqual([]);
+  });
+
+  it('every cut-in text the game can show has a logo', async () => {
+    const { logoForText } = await import('./logos');
+    const texts = new Set<string>();
+    const collect = (events: FxEvent[]) => run(events).shows.forEach((s) => s.kind === 'cutin' && texts.add(s.text));
+    collect(place(FEVER_COMBO));
+    collect([...place(FEVER_COMBO), { type: 'miss', row: 0, col: 0 }]);
+    collect([{ type: 'miss', row: 0, col: 0 }]);
+    collect([{ type: 'remaining', count: 9 }, { type: 'remaining', count: 3 }]);
+    for (const units of [['row-0'], ['col-0'], ['box-0-0'], ['row-0', 'col-0'], ['row-0', 'col-0', 'box-0-0']]) {
+      collect([{ type: 'units', units }]);
+    }
+    expect([...texts].filter((t) => !logoForText(t))).toEqual([]);
+    expect(texts.size).toBe(10);
+  });
+});

@@ -379,11 +379,69 @@
 }
 .fx-jackpot-balls { position: relative; margin-top: 14px; font-size: 22px; }
 .fx-jackpot-hint { position: relative; margin-top: 18px; color: rgba(255, 255, 255, 0.55); font-size: 11px; }
+.fx-jackpot-logo { position: relative; margin-top: 18px; width: min(96vw, 520px); animation: fx-slam 1.1s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+.fx-jackpot-logo img { width: 100%; display: block; }
+
+/* ---------- Pre-rendered logo cut-ins (LogoCutIn.tsx) ---------- */
+.fx-logo-cutin {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.fx-takeover-dim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 46%, rgba(40, 0, 10, 0.35), rgba(0, 0, 0, 0.78) 70%);
+  animation: fx-dim 1.6s ease-out forwards;
+}
+@keyframes fx-dim { 0% { opacity: 0; } 10%, 82% { opacity: 1; } 100% { opacity: 0; } }
+.fx-flames { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fx-logo-major .fx-rays { animation: fx-rays-spin 6s linear infinite, fx-rays-life 1.6s ease-out forwards; }
+
+.fx-logo { position: relative; width: min(94vw, 500px); }
+.fx-logo img { display: block; width: 100%; user-select: none; }
+.fx-logo-major .fx-logo { animation: fx-slam 1.6s cubic-bezier(0.2, 1.3, 0.4, 1) forwards; }
+.fx-logo-minor { justify-content: flex-start; padding-top: 30vh; }
+.fx-logo-minor .fx-logo { width: min(72vw, 360px); animation: fx-pop 1s cubic-bezier(0.2, 1.4, 0.4, 1) forwards; }
+@keyframes fx-slam {
+  0% { transform: scale(3.2) rotate(-10deg); opacity: 0; filter: blur(10px) brightness(2); }
+  16% { transform: scale(0.9) rotate(-3deg); opacity: 1; filter: blur(0) brightness(1.6); }
+  24% { transform: scale(1.06) rotate(-4deg); filter: brightness(1); }
+  32%, 84% { transform: scale(1) rotate(-4deg); opacity: 1; }
+  100% { transform: scale(1.12) rotate(-4deg); opacity: 0; }
+}
+@keyframes fx-pop {
+  0% { transform: scale(0.3) translateY(20px); opacity: 0; }
+  18% { transform: scale(1.1) translateY(0); opacity: 1; }
+  28%, 78% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1) translateY(-24px); opacity: 0; }
+}
+/* Light sweep clipped to the logo's own shape */
+.fx-logo-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.9) 48%, rgba(255, 250, 220, 0.4) 52%, transparent 62%) no-repeat;
+  background-size: 300% 100%;
+  -webkit-mask: var(--logo) center / 100% 100% no-repeat;
+  mask: var(--logo) center / 100% 100% no-repeat;
+  mix-blend-mode: screen;
+  animation: fx-logo-shine 1.6s ease-in-out 0.25s both;
+}
+@keyframes fx-logo-shine { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+.fx-logo-sub { position: relative; margin-top: -2px; font-size: 22px; animation: fx-pop 1.6s ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
   .fx-led, .fx-frame, .fx-fever .fx-leds, .fx-cutin::before, .fx-hud, .fx-hud-bump, .fx-text-shine,
   .fx-star, .fx-rays, .fx-jackpot .fx-rays,
-  .fx-reel-spin .fx-reel-strip, .fx-reel-stop .fx-reel-strip { animation: none !important; }
+  .fx-reel-spin .fx-reel-strip, .fx-reel-stop .fx-reel-strip,
+  .fx-logo-shine { animation: none !important; }
   .fx-reel-spin .fx-reel-strip { filter: none; }
   .fx-rays { opacity: 0.6; }
+  /* logos still appear and leave, but without the zoom and blur */
+  .fx-logo-major .fx-logo, .fx-logo-minor .fx-logo, .fx-jackpot-logo { animation: fx-fade-hold 1.6s linear forwards !important; }
+  .fx-logo-shine { opacity: 0; }
 }
+@keyframes fx-fade-hold { 0% { opacity: 0; } 10%, 85% { opacity: 1; } 100% { opacity: 0; } }

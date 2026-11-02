@@ -7,11 +7,14 @@ import { createParticles } from './particles';
 import { playCoins, playCutIn, playFever, playMiss, playPlace, playReach } from './fxAudio';
 import { Jackpot } from './Jackpot';
 import { FxText } from './FxText';
+import { FX_LOGOS, logoForText, logoUrl } from './logos';
+import { LogoCutIn, MAJOR_CUTIN_MS, MINOR_CUTIN_MS } from './LogoCutIn';
 
 type CutIn = Extract<FxShow, { kind: 'cutin' }> & { id: number };
 type ComboPop = { id: number; x: number; y: number; combo: number };
 
 const CUTIN_MS = 1250;
+const JACKPOT_LOGO = logoForText('大当たり');
 /** [left %, top %, delay s] of the twinkling stars on a cut-in band */
 const STARS: [number, number, number][] = [
   [16, 12, 0],
@@ -55,6 +58,28 @@ function useBoardRect() {
   return rect;
 }
 
+/** Fetch the pre-rendered logos when the mode turns on; a cut-in uses its logo only once it has loaded */
+function useLoadedLogos() {
+  const [loaded, setLoaded] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    let alive = true;
+    FX_LOGOS.forEach((logo) => {
+      const img = new Image();
+      img.src = logoUrl(logo);
+      img
+        .decode()
+        .then(() => alive && setLoaded((prev) => new Set([...prev, logo.id])))
+        .catch(() => {
+          // Offline or missing: that cut-in keeps the CSS band
+        });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return loaded;
+}
+
 /** Full-screen effects for ドパガキモード. Listens to fxBus; never takes pointer input except the jackpot. */
 export default function FxLayer({ sound }: { sound: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -72,6 +97,7 @@ export default function FxLayer({ sound }: { sound: boolean }) {
   const [flashId, setFlashId] = useState(0);
   const [jackpot, setJackpot] = useState(false);
   const layout = useBoardRect();
+  const loadedLogos = useLoadedLogos();
   const boardRect = layout?.board ?? null;
   // Bottom-anchored just above the board, but never above the header's bottom edge
   const HUD_HEIGHT = 46;
@@ -127,6 +153,9 @@ export default function FxLayer({ sound }: { sound: boolean }) {
 
   // Play the head of the cut-in queue: sound, flash and shake fire when it appears
   const current = cutIns[0];
+  const currentLogo = current ? logoForText(current.text) : undefined;
+  const logoReady = currentLogo !== undefined && loadedLogos.has(currentLogo.id);
+  const cutInMs = !logoReady ? CUTIN_MS : current?.priority ? MAJOR_CUTIN_MS : MINOR_CUTIN_MS;
   useEffect(() => {
     if (!current) return;
     if (current.flash) flash();
@@ -137,8 +166,9 @@ export default function FxLayer({ sound }: { sound: boolean }) {
       else if (current.tone === 'gray') playMiss();
       else playCutIn();
     }
-    const t = window.setTimeout(() => setCutIns((list) => list.slice(1)), CUTIN_MS);
+    const t = window.setTimeout(() => setCutIns((list) => list.slice(1)), cutInMs);
     return () => window.clearTimeout(t);
+    // cutInMs is fixed for a given cut-in; re-running on it would replay the sound
   }, [current, flash, shake]);
 
   useEffect(
@@ -198,7 +228,17 @@ export default function FxLayer({ sound }: { sound: boolean }) {
         </div>
       ))}
 
-      {current ? (
+      {current && currentLogo && logoReady ? (
+        <LogoCutIn
+          key={current.id}
+          text={current.text}
+          sub={current.sub}
+          tone={current.tone}
+          src={logoUrl(currentLogo)}
+          major={current.priority}
+          reducedMotion={reducedMotion()}
+        />
+      ) : current ? (
         <div key={current.id} className={`fx-cutin-wrap fx-tone-${current.tone}`}>
           <div className="fx-rays" />
           <div className="fx-cutin">
@@ -217,6 +257,7 @@ export default function FxLayer({ sound }: { sound: boolean }) {
         <Jackpot
           balls={hud.balls}
           sound={sound}
+          logoSrc={JACKPOT_LOGO && loadedLogos.has(JACKPOT_LOGO.id) ? logoUrl(JACKPOT_LOGO) : null}
           onFountain={() => particlesRef.current?.fountain(reducedMotion() ? 20 : 90)}
           onClose={() => setJackpot(false)}
         />

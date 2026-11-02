@@ -9,12 +9,14 @@ const AUTO_CLOSE_MS = 5200;
 interface JackpotProps {
   balls: number;
   sound: boolean;
+  /** Pre-rendered 大当たり logo, or null to fall back to CSS lettering */
+  logoSrc: string | null;
   onFountain: () => void;
   onClose: () => void;
 }
 
 /** 7-7-7 reels, then 大当たり with coin fountains. Tap anywhere to close. */
-export function Jackpot({ balls, sound, onFountain, onClose }: JackpotProps) {
+export function Jackpot({ balls, sound, logoSrc, onFountain, onClose }: JackpotProps) {
   const [stopped, setStopped] = useState(0);
 
   useEffect(() => {
@@ -54,7 +56,13 @@ export function Jackpot({ balls, sound, onFountain, onClose }: JackpotProps) {
       </div>
       {done ? (
         <>
-          <FxText text="大当たり" className="fx-jackpot-title fx-tone-red" />
+          {logoSrc ? (
+            <div className="fx-jackpot-logo">
+              <img src={logoSrc} alt="大当たり" draggable={false} />
+            </div>
+          ) : (
+            <FxText text="大当たり" className="fx-jackpot-title fx-tone-red" />
+          )}
           <FxText text={`持ち玉 ${balls.toLocaleString()} 玉`} className="fx-jackpot-balls fx-text-sm" />
         </>
       ) : null}
