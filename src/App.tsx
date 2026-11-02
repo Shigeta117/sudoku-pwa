@@ -780,19 +780,15 @@ export default function App() {
   return (
     <div className="h-[100dvh] w-full flex flex-col justify-between bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 select-none overflow-hidden pt-safe pb-safe">
       {/* Top App Bar */}
-      <header className="w-full max-w-md mx-auto px-3 pt-1.5 pb-1 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-sm shadow-indigo-500/30">
-            9
-          </div>
+      <header className="w-full max-w-md mx-auto px-3 pt-1.5 pb-1 flex items-center justify-between gap-1 shrink-0">
+        {/* No logo or app name: the room goes to the status box so its labels stay horizontal */}
+        <div className="flex shrink-0 items-center">
           <div>
-            <h1 className="text-sm font-bold tracking-tight leading-none">
-              Zen Sudoku
-            </h1>
+            <h1 className="sr-only">Zen Sudoku</h1>
             <button
               type="button"
               onClick={() => setShowNewGameModal(true)}
-              className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:opacity-80 active:scale-95 transition"
+              className="inline-flex items-center gap-1 whitespace-nowrap text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:opacity-80 active:scale-95 transition"
               aria-label="難易度を変更または新規ゲーム"
             >
               {challenge ? (
@@ -801,7 +797,7 @@ export default function App() {
               ) : (
                 <>
                   <span>{DIFFICULTY_CONFIG[difficulty].jaLabel}</span>
-                  <span className="text-[10px] opacity-75">
+                  <span className="hidden min-[380px]:inline text-[10px] opacity-75">
                     ({DIFFICULTY_CONFIG[difficulty].label})
                   </span>
                 </>
@@ -812,9 +808,9 @@ export default function App() {
         </div>
 
         {/* Center Status: Mistakes & Timer */}
-        <div className="flex items-center gap-3 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+        <div className="flex shrink-0 items-center gap-3 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
           <div className="text-center">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium leading-none">
+            <div className="whitespace-nowrap text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-medium leading-none">
               ミス
             </div>
             <div className="text-xs font-bold font-mono mt-0.5 text-slate-700 dark:text-slate-200">
@@ -845,11 +841,11 @@ export default function App() {
         </div>
 
         {/* Right Utility Icons */}
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center min-[380px]:gap-1">
           <button
             type="button"
             onClick={() => setDojo({ lessonId: null })}
-            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 active:scale-95 transition"
+            className="p-1.5 min-[380px]:p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 active:scale-95 transition"
             aria-label="解法道場"
             title="解法道場（解き方を学ぶ）"
           >
@@ -858,7 +854,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setShowStatsModal(true)}
-            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 active:scale-95 transition"
+            className="p-1.5 min-[380px]:p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 active:scale-95 transition"
             aria-label="統計・ベストタイム"
             title="統計・ベストタイム"
           >
@@ -867,7 +863,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setShowSettingsModal(true)}
-            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 active:scale-95 transition"
+            className="p-1.5 min-[380px]:p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 active:scale-95 transition"
             aria-label="設定"
             title="設定"
           >

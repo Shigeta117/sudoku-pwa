@@ -31,10 +31,15 @@ function cellCenter(row: number, col: number): { x: number; y: number } | null {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
 
+/** Board position, plus the header's bottom edge so the counter never covers the header */
 function useBoardRect() {
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  const [rect, setRect] = useState<{ board: DOMRect; headerBottom: number } | null>(null);
   useEffect(() => {
-    const update = () => setRect(document.querySelector('[role="grid"]')?.getBoundingClientRect() ?? null);
+    const update = () => {
+      const board = document.querySelector('[role="grid"]')?.getBoundingClientRect();
+      const headerBottom = document.querySelector('header')?.getBoundingClientRect().bottom ?? 0;
+      setRect(board ? { board, headerBottom } : null);
+    };
     update();
     const grid = document.querySelector('[role="grid"]');
     const observer = grid ? new ResizeObserver(update) : null;
@@ -66,7 +71,11 @@ export default function FxLayer({ sound }: { sound: boolean }) {
   const [pops, setPops] = useState<ComboPop[]>([]);
   const [flashId, setFlashId] = useState(0);
   const [jackpot, setJackpot] = useState(false);
-  const boardRect = useBoardRect();
+  const layout = useBoardRect();
+  const boardRect = layout?.board ?? null;
+  // Bottom-anchored just above the board, but never above the header's bottom edge
+  const HUD_HEIGHT = 46;
+  const hudTop = layout ? Math.max(layout.board.top - 12, layout.headerBottom + 6 + HUD_HEIGHT) : 120;
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -171,9 +180,7 @@ export default function FxLayer({ sound }: { sound: boolean }) {
       <div
         className="fx-hud"
         style={
-          boardRect
-            ? { left: boardRect.left + boardRect.width / 2, top: boardRect.top - 12 }
-            : { left: '50%', top: 120 }
+          boardRect ? { left: boardRect.left + boardRect.width / 2, top: hudTop } : { left: '50%', top: hudTop }
         }
       >
         <FxText text="持ち玉" className="fx-hud-label fx-text-sm" />
