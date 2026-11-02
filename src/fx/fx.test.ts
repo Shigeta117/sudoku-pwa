@@ -95,3 +95,17 @@ describe('flash gate', () => {
     expect(MIN_FLASH_INTERVAL_MS).toBeGreaterThanOrEqual(500);
   });
 });
+
+describe('effects font subset', () => {
+  const sources = import.meta.glob<string>('./*.{ts,tsx}', { query: '?raw', import: 'default', eager: true });
+  const glyphs = import.meta.glob<string>('./fonts/glyphs.txt', { query: '?raw', import: 'default', eager: true });
+
+  it('contains every non-ASCII character used in src/fx (rerun scripts/build-fx-font.mjs)', () => {
+    const inFont = new Set(Object.values(glyphs)[0]);
+    const missing = new Set<string>();
+    for (const text of Object.values(sources)) {
+      for (const ch of text) if (ch.codePointAt(0)! > 0x7e && !inFont.has(ch)) missing.add(ch);
+    }
+    expect([...missing].join('')).toBe('');
+  });
+});

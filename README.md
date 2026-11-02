@@ -77,7 +77,7 @@ public/
 
 ## クレジット
 
-問題の生成・難易度の判定・ヒントには [sudoku-core](https://github.com/komeilmehranfar/sudoku-core)（MIT, © Komeil Mehranfar）を使っています。17 個チャレンジの問題は、Gordon Royle が集めた 17 個の問題の一覧（その後の追加分を含む 49,158 問）から選んでいます。一覧は [tdoku](https://github.com/t-dillon/tdoku)（BSD-2-Clause, © Tom Dillon）の `data.zip` に収録されたものを使いました。同梱している依存パッケージのライセンス全文は [public/third-party-licenses.txt](public/third-party-licenses.txt) にあります。
+問題の生成・難易度の判定・ヒントには [sudoku-core](https://github.com/komeilmehranfar/sudoku-core)（MIT, © Komeil Mehranfar）を使っています。17 個チャレンジの問題は、Gordon Royle が集めた 17 個の問題の一覧（その後の追加分を含む 49,158 問）から選んでいます。一覧は [tdoku](https://github.com/t-dillon/tdoku)（BSD-2-Clause, © Tom Dillon）の `data.zip` に収録されたものを使いました。ドパガキモードの文字は [Dela Gothic One](https://github.com/syakuzen/DelaGothic)（SIL OFL 1.1、演出で使う文字だけに絞ったもの。`scripts/build-fx-font.mjs` で作り直せます）、持ち玉の数字は [DSEG7](https://github.com/keshikan/DSEG)（SIL OFL 1.1）です。同梱している依存パッケージのライセンス全文は [public/third-party-licenses.txt](public/third-party-licenses.txt) にあります。
 
 ## ライセンス
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { playJackpot, playReelStop } from './fxAudio';
+import { FxText } from './FxText';
 
 const STRIP = ['7', '3', '5', '1', '9', '7'];
 const STOP_AT_MS = [700, 1150, 1600];
@@ -37,12 +38,15 @@ export function Jackpot({ balls, sound, onFountain, onClose }: JackpotProps) {
 
   return (
     <div className="fx-jackpot" role="presentation" onClick={onClose}>
+      <div className="fx-rays" />
       <div className="fx-reels" aria-hidden="true">
         {STOP_AT_MS.map((_, i) => (
           <div key={i} className={`fx-reel ${stopped > i ? 'fx-reel-stop' : 'fx-reel-spin'}`}>
             <div className="fx-reel-strip">
               {(stopped > i ? ['7'] : STRIP).map((d, k) => (
-                <span key={k}>{d}</span>
+                <span key={k}>
+                  <FxText text={d} />
+                </span>
               ))}
             </div>
           </div>
@@ -50,8 +54,8 @@ export function Jackpot({ balls, sound, onFountain, onClose }: JackpotProps) {
       </div>
       {done ? (
         <>
-          <div className="fx-jackpot-title">大当たり</div>
-          <div className="fx-jackpot-balls">持ち玉 {balls.toLocaleString()} 玉</div>
+          <FxText text="大当たり" className="fx-jackpot-title fx-tone-red" />
+          <FxText text={`持ち玉 ${balls.toLocaleString()} 玉`} className="fx-jackpot-balls fx-text-sm" />
         </>
       ) : null}
       <div className="fx-jackpot-hint">タップで閉じる</div>

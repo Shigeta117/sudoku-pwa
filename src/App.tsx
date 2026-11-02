@@ -792,7 +792,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setShowNewGameModal(true)}
-              className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:opacity-80 active:scale-95 transition"
+              className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:opacity-80 active:scale-95 transition"
               aria-label="難易度を変更または新規ゲーム"
             >
               {challenge ? (

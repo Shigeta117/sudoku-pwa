@@ -6,11 +6,20 @@ import { createFlashGate } from './flashGate';
 import { createParticles } from './particles';
 import { playCoins, playCutIn, playFever, playMiss, playPlace, playReach } from './fxAudio';
 import { Jackpot } from './Jackpot';
+import { FxText } from './FxText';
 
 type CutIn = Extract<FxShow, { kind: 'cutin' }> & { id: number };
 type ComboPop = { id: number; x: number; y: number; combo: number };
 
 const CUTIN_MS = 1250;
+/** [left %, top %, delay s] of the twinkling stars on a cut-in band */
+const STARS: [number, number, number][] = [
+  [16, 12, 0],
+  [30, 70, 0.3],
+  [70, 18, 0.15],
+  [84, 66, 0.45],
+  [52, 6, 0.6],
+];
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -63,6 +72,15 @@ export default function FxLayer({ sound }: { sound: boolean }) {
     if (!canvasRef.current) return;
     particlesRef.current = createParticles(canvasRef.current);
     return () => particlesRef.current?.destroy();
+  }, []);
+
+  // Make room for the edge lights (fx.css) and fetch the fonts before the first cut-in
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add('fx-on');
+    document.fonts?.load('1em FxDisplay', '確変突入').catch(() => undefined);
+    document.fonts?.load('1em FxSeg', '0').catch(() => undefined);
+    return () => root.classList.remove('fx-on');
   }, []);
 
   const flash = useCallback(() => {
@@ -150,25 +168,39 @@ export default function FxLayer({ sound }: { sound: boolean }) {
       ) : null}
       <canvas ref={canvasRef} className="fx-canvas" />
 
-      <div className="fx-hud">
-        <span className="fx-hud-label">持ち玉</span>
+      <div
+        className="fx-hud"
+        style={
+          boardRect
+            ? { left: boardRect.left + boardRect.width / 2, top: boardRect.top - 12 }
+            : { left: '50%', top: 120 }
+        }
+      >
+        <FxText text="持ち玉" className="fx-hud-label fx-text-sm" />
         {/* key restarts only the number's bump, not the HUD's fever colour cycle */}
-        <span key={hud.balls} className="fx-hud-balls fx-hud-bump">
-          {String(hud.balls).padStart(6, '0')}
+        <span key={hud.balls} className="fx-seg fx-hud-bump">
+          <span className="fx-seg-ghost">888888</span>
+          <span className="fx-seg-lit">{String(hud.balls).padStart(6, '!')}</span>
         </span>
-        {hud.combo >= 2 ? <span className="fx-hud-combo">{hud.combo} 連チャン</span> : null}
+        {hud.combo >= 2 ? <FxText text={`${hud.combo}連チャン`} className="fx-hud-combo fx-tone-red fx-text-sm" /> : null}
       </div>
 
       {pops.map((p) => (
         <div key={p.id} className="fx-combo" style={{ left: p.x, top: p.y }}>
-          {p.combo} 連
+          <FxText text={`${p.combo}連`} />
         </div>
       ))}
 
       {current ? (
-        <div key={current.id} className={`fx-cutin fx-tone-${current.tone}`}>
-          <div className="fx-cutin-text">{current.text}</div>
-          {current.sub ? <div className="fx-cutin-sub">{current.sub}</div> : null}
+        <div key={current.id} className={`fx-cutin-wrap fx-tone-${current.tone}`}>
+          <div className="fx-rays" />
+          <div className="fx-cutin">
+            {STARS.map(([left, top, delay], i) => (
+              <span key={i} className="fx-star" style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${delay}s` }} />
+            ))}
+            <FxText text={current.text} className="fx-cutin-text" />
+            {current.sub ? <FxText text={current.sub} className="fx-cutin-sub fx-text-sm" /> : null}
+          </div>
         </div>
       ) : null}
 
