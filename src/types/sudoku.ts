@@ -1,4 +1,4 @@
-export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'master';
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'master' | 'extreme';
 
 export const DIFFICULTIES: readonly Difficulty[] = [
   'easy',
@@ -6,6 +6,7 @@ export const DIFFICULTIES: readonly Difficulty[] = [
   'hard',
   'expert',
   'master',
+  'extreme',
 ];
 
 export type InputMethod = 'cell-first' | 'number-first';
@@ -46,6 +47,14 @@ export interface UserSettings {
   defaultInputMethod: InputMethod;
 }
 
+/** A game that is not a plain difficulty: it skips the stats and shows its own label. */
+export interface GameChallenge {
+  kind: 'seventeen' | 'practice';
+  /** seventeen: 'normal' | 'hard'; practice: the sudoku-core strategy */
+  key: string;
+  label: string;
+}
+
 export interface SavedGameState {
   version: number;
   difficulty: Difficulty;
@@ -57,4 +66,5 @@ export interface SavedGameState {
   hintsUsed?: number;
   isCompleted: boolean;
   lastUpdatedAt: number;
+  challenge?: GameChallenge;
 }

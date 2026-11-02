@@ -25,6 +25,7 @@ import {
   CellData,
   DIFFICULTIES,
   Difficulty,
+  GameChallenge,
   InputMethod,
   SavedGameState,
   StatsRecord,
@@ -39,6 +40,7 @@ import {
   isBoardSolved,
 } from './utils/sudokuEngine';
 import { generatePuzzleAsync, prefetchPuzzle } from './utils/puzzleWorkerClient';
+import { SEVENTEEN_BANDS, pickChallengePuzzle } from './utils/puzzlePool';
 import { pushHistory } from './utils/history';
 import { HintResult, findHint } from './utils/hint';
 import { DojoErrorBoundary } from './components/dojo/DojoErrorBoundary';
@@ -118,6 +120,8 @@ export default function App() {
   const [stats, setStats] = useState<StatsRecord>(() => loadStats());
 
   const [difficulty, setDifficulty] = useState<Difficulty>('easy');
+  // 17-clue / technique practice games: not counted in the stats, labelled by the challenge
+  const [challenge, setChallenge] = useState<GameChallenge | null>(null);
   const [board, setBoard] = useState<CellData[][]>([]);
   const [history, setHistory] = useState<BoardSnapshot[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
@@ -186,9 +190,9 @@ export default function App() {
     });
   }, []);
 
-  // Start a fresh puzzle of the specified difficulty
+  // Start a fresh puzzle of the specified difficulty, or of a challenge (17-clue / practice)
   const startNewGame = useCallback(
-    async (targetDifficulty: Difficulty) => {
+    async (requestedDifficulty: Difficulty, nextChallenge?: GameChallenge) => {
       const generationId = ++generationIdRef.current;
       setIsGenerating(true);
       setShowNewGameModal(false);
@@ -196,8 +200,22 @@ export default function App() {
       setStatusMessage(null);
 
       let generated;
+      let targetDifficulty = requestedDifficulty;
+      let activeChallenge = nextChallenge;
+      let fellBack = false;
+      if (activeChallenge) {
+        try {
+          const picked = await pickChallengePuzzle(activeChallenge);
+          generated = picked;
+          targetDifficulty = picked.difficulty;
+        } catch {
+          // Pool missing or renamed technique: play a normal puzzle instead of an empty board
+          activeChallenge = undefined;
+          fellBack = true;
+        }
+      }
       try {
-        generated = await generatePuzzleAsync(targetDifficulty);
+        generated ??= await generatePuzzleAsync(targetDifficulty);
       } catch {
         if (generationId !== generationIdRef.current) return;
         setIsGenerating(false);
@@ -209,6 +227,8 @@ export default function App() {
 
       const initialBoard = buildInitialBoard(generated.puzzle, generated.solution);
       setDifficulty(targetDifficulty);
+      setChallenge(activeChallenge ?? null);
+      if (fellBack) setStatusMessage('特別な問題を読み込めなかったので、通常の問題を出しました');
       setBoard(initialBoard);
       setHistory([createSnapshot(initialBoard)]);
       setHistoryIndex(0);
@@ -224,6 +244,7 @@ export default function App() {
       prevUnitsRef.current = getCompletedUnits(initialBoard);
       setIsGenerating(false);
 
+      if (activeChallenge) return;
       const updatedStats = recordGameStart(targetDifficulty);
       setStats(updatedStats);
       prefetchPuzzle(targetDifficulty);
@@ -236,6 +257,7 @@ export default function App() {
     const saved = loadSavedGame();
     if (saved && !saved.isCompleted) {
       setDifficulty(saved.difficulty);
+      setChallenge(saved.challenge ?? null);
       setBoard(evaluateBoardErrors(saved.board));
       setHistory(
         saved.history.length > 0 ? saved.history : [createSnapshot(saved.board)]
@@ -247,9 +269,9 @@ export default function App() {
       setIsCompleted(false);
       prevUnitsRef.current = getCompletedUnits(saved.board);
       setIsGenerating(false);
-      prefetchPuzzle(saved.difficulty);
+      if (!saved.challenge) prefetchPuzzle(saved.difficulty);
     } else {
-      startNewGame(saved?.difficulty ?? 'easy');
+      startNewGame(saved?.difficulty ?? 'easy', saved?.challenge);
     }
   }, [startNewGame]);
 
@@ -271,9 +293,11 @@ export default function App() {
             hintsUsed,
             isCompleted,
             lastUpdatedAt: Date.now(),
+            ...(challenge ? { challenge } : {}),
           };
   }, [
     board,
+    challenge,
     difficulty,
     elapsedSeconds,
     hintsUsed,
@@ -291,7 +315,7 @@ export default function App() {
   // Save on every move, but not on every timer tick (the history can be large)
   useEffect(() => {
     flushSave();
-  }, [board, difficulty, hintsUsed, history, historyIndex, isCompleted, isGenerating, mistakes, flushSave]);
+  }, [board, challenge, difficulty, hintsUsed, history, historyIndex, isCompleted, isGenerating, mistakes, flushSave]);
 
   // Elapsed time: every 10 s, and whenever the page is hidden or closed
   useEffect(() => {
@@ -386,15 +410,17 @@ export default function App() {
         setIsCompleted(true);
         setShowVictoryModal(true);
         triggerHaptic(settings.vibrationEnabled, [30, 50, 30, 50, 60]);
-        const { stats: updatedStats, isNewBest } = recordGameWin(
-          difficulty,
-          elapsedSeconds
-        );
-        setStats(updatedStats);
-        setIsNewBestTime(isNewBest);
+        if (!challenge) {
+          const { stats: updatedStats, isNewBest } = recordGameWin(
+            difficulty,
+            elapsedSeconds
+          );
+          setStats(updatedStats);
+          setIsNewBestTime(isNewBest);
+        }
       }
     },
-    [difficulty, elapsedSeconds, settings.vibrationEnabled]
+    [challenge, difficulty, elapsedSeconds, settings.vibrationEnabled]
   );
 
   // Core function to apply a digit or note to cell (r, c)
@@ -751,10 +777,17 @@ export default function App() {
               className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:opacity-80 active:scale-95 transition"
               aria-label="難易度を変更または新規ゲーム"
             >
-              <span>{DIFFICULTY_CONFIG[difficulty].jaLabel}</span>
-              <span className="text-[10px] opacity-75">
-                ({DIFFICULTY_CONFIG[difficulty].label})
-              </span>
+              {challenge ? (
+                // The header is narrow on phones: the difficulty is shown on the clear screen instead
+                <span className="max-w-[9rem] truncate">{challenge.label}</span>
+              ) : (
+                <>
+                  <span>{DIFFICULTY_CONFIG[difficulty].jaLabel}</span>
+                  <span className="text-[10px] opacity-75">
+                    ({DIFFICULTY_CONFIG[difficulty].label})
+                  </span>
+                </>
+              )}
               <span className="text-[10px] ml-0.5">▼</span>
             </button>
           </div>
@@ -1185,8 +1218,9 @@ export default function App() {
               パズルクリア！
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {DIFFICULTY_CONFIG[difficulty].jaLabel} (
-              {DIFFICULTY_CONFIG[difficulty].label}) を解き明かしました
+              {challenge
+                ? `${challenge.label}（${DIFFICULTY_CONFIG[difficulty].jaLabel}）を解き明かしました`
+                : `${DIFFICULTY_CONFIG[difficulty].jaLabel} (${DIFFICULTY_CONFIG[difficulty].label}) を解き明かしました`}
             </p>
 
             {isNewBestTime ? (
@@ -1207,10 +1241,12 @@ export default function App() {
               </div>
               <div>
                 <div className="text-[10px] text-slate-400 font-medium">
-                  ベスト記録
+                  {challenge ? '難しさ' : 'ベスト記録'}
                 </div>
                 <div className="text-base font-extrabold font-mono mt-0.5">
-                  {formatTime(stats[difficulty].bestTimeSeconds)}
+                  {challenge
+                    ? DIFFICULTY_CONFIG[difficulty].jaLabel
+                    : formatTime(stats[difficulty].bestTimeSeconds)}
                 </div>
               </div>
               <div>
@@ -1231,10 +1267,10 @@ export default function App() {
             <div className="flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => startNewGame(difficulty)}
+                onClick={() => startNewGame(difficulty, challenge ?? undefined)}
                 className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition"
               >
-                同じ難易度でもう1局
+                {challenge ? '同じ種類の次の問題' : '同じ難易度でもう1局'}
               </button>
               <button
                 type="button"
@@ -1251,7 +1287,7 @@ export default function App() {
       {/* New Game / Difficulty Selector Modal */}
       {showNewGameModal ? (
         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl animate-pop-in">
+          <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl animate-pop-in">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-bold">新しいパズルを始める</h2>
               <button
@@ -1264,7 +1300,7 @@ export default function App() {
               </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              解が1つだけのパズルを、解くのに必要な解き方の難しさで5段階に分けています。勘で埋める必要はありません。
+              解が1つだけのパズルを、解くのに必要な解き方の難しさで6段階に分けています。勘で埋める必要はありません。
             </p>
             <div className="flex flex-col gap-2">
               {DIFFICULTIES.map(
@@ -1277,7 +1313,7 @@ export default function App() {
                       type="button"
                       onClick={() => startNewGame(diff)}
                       className={`w-full flex items-center justify-between p-3.5 rounded-2xl border text-left transition active:scale-98 ${
-                        difficulty === diff
+                        !challenge && difficulty === diff
                           ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40'
                           : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                       }`}
@@ -1303,6 +1339,34 @@ export default function App() {
                   );
                 }
               )}
+            </div>
+
+            <h3 className="mt-5 mb-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+              特別な問題
+            </h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+              最初の数字が 17 個しかない問題です。16 個以下では解が 1 つに決まらないことが証明されていて、17 個が最少です。記録には数えません。
+            </p>
+            <div className="flex flex-col gap-2">
+              {SEVENTEEN_BANDS.map((band) => (
+                <button
+                  key={band.key}
+                  type="button"
+                  onClick={() =>
+                    startNewGame('easy', { kind: 'seventeen', key: band.key, label: band.label })
+                  }
+                  className={`w-full p-3 rounded-2xl border text-left transition active:scale-98 ${
+                    challenge?.kind === 'seventeen' && challenge.key === band.key
+                      ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40'
+                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="font-bold text-sm">{band.label}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {band.note}
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -1399,7 +1463,14 @@ export default function App() {
       {dojo ? (
         <DojoErrorBoundary onClose={() => setDojo(null)}>
           <Suspense fallback={null}>
-            <DojoView initialLessonId={dojo.lessonId} onClose={() => setDojo(null)} />
+            <DojoView
+              initialLessonId={dojo.lessonId}
+              onClose={() => setDojo(null)}
+              onPractice={(strategy, title) => {
+                setDojo(null);
+                startNewGame('easy', { kind: 'practice', key: strategy, label: `練習 ${title}` });
+              }}
+            />
           </Suspense>
         </DojoErrorBoundary>
       ) : null}

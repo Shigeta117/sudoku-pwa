@@ -4,7 +4,7 @@ import { DIFFICULTIES } from '../types/sudoku';
 import { DIFFICULTY_CONFIG, generatePuzzle, toFlatBoard } from './sudokuEngine';
 
 describe('generatePuzzle', () => {
-  it.each(DIFFICULTIES)(
+  it.each(DIFFICULTIES.filter((d) => !DIFFICULTY_CONFIG[d].pooled))(
     '%s: unique solution, rated at the configured level, solution matches the givens',
     (difficulty) => {
       const { puzzle, solution } = generatePuzzle(difficulty);
@@ -21,4 +21,10 @@ describe('generatePuzzle', () => {
     },
     60_000
   );
+});
+
+describe('pooled difficulties', () => {
+  it('are never generated on the device', () => {
+    expect(() => generatePuzzle('extreme')).toThrow(/bundled pool/);
+  });
 });

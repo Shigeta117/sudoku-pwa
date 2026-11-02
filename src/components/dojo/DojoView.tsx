@@ -13,6 +13,7 @@ import {
   judgePlacement,
   loadDojoExamples,
 } from '../../utils/dojoData';
+import { loadPractice } from '../../utils/puzzlePool';
 import { DojoBoard, DojoReveal } from './DojoBoard';
 
 const PROGRESS_KEY = 'zen_sudoku_dojo_v1';
@@ -48,9 +49,11 @@ interface DojoViewProps {
   onClose: () => void;
   /** Open this lesson directly (from a game hint) */
   initialLessonId?: string | null;
+  /** Start a full game whose hardest step is this technique */
+  onPractice: (strategy: string, title: string) => void;
 }
 
-export default function DojoView({ onClose, initialLessonId = null }: DojoViewProps) {
+export default function DojoView({ onClose, onPractice, initialLessonId = null }: DojoViewProps) {
   const [lessonId, setLessonId] = useState<string | null>(initialLessonId);
   const [progress, setProgress] = useState<Progress>(loadProgress);
   const lesson = DOJO_LESSONS.find((l) => l.id === lessonId) ?? null;
@@ -118,6 +121,7 @@ export default function DojoView({ onClose, initialLessonId = null }: DojoViewPr
               lesson={lesson}
               solved={progress[lesson.id] ?? []}
               onSolved={(key) => markSolved(lesson.id, key)}
+              onPractice={() => onPractice(lesson.strategy, lesson.title)}
             />
           ) : (
             <LessonList progress={progress} onOpen={setLessonId} />
@@ -206,14 +210,30 @@ function LessonPage({
   lesson,
   solved,
   onSolved,
+  onPractice,
 }: {
   lesson: DojoLesson;
   solved: string[];
   onSolved: (key: string) => void;
+  onPractice: () => void;
 }) {
   const [examples, setExamples] = useState<DojoExample[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [exampleIndex, setExampleIndex] = useState(0);
+  const [practiceCount, setPracticeCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPracticeCount(0);
+    loadPractice(lesson.strategy)
+      .then((list) => !cancelled && setPracticeCount(list.length))
+      .catch(() => {
+        // No practice button when the pool cannot load; the examples above still work
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lesson.strategy]);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,6 +321,22 @@ function LessonPage({
           この技の例題はまだありません。問題の中で見つけにくい技なので、例題を探している途中です。
         </p>
       )}
+
+      {practiceCount > 0 ? (
+        <section className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <h3 className="text-sm font-bold">1 局まるごと練習</h3>
+          <p className="mt-1 text-[12px] leading-relaxed text-slate-600 dark:text-slate-400">
+            この技がいちばん難しい手になる問題を最初から解きます。行き詰まったところで、この技を探してみてください。
+          </p>
+          <button
+            type="button"
+            onClick={onPractice}
+            className="mt-3 w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition active:scale-98"
+          >
+            この技を使う問題を解く（{practiceCount} 問）
+          </button>
+        </section>
+      ) : null}
     </>
   );
 }

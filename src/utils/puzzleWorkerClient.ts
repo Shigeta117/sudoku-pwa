@@ -1,5 +1,6 @@
 import { Difficulty } from '../types/sudoku';
-import { GeneratedPuzzle, generatePuzzle } from './sudokuEngine';
+import { DIFFICULTY_CONFIG, GeneratedPuzzle, generatePuzzle } from './sudokuEngine';
+import { pickExtremePuzzle } from './puzzlePool';
 
 const PREFETCH_KEY = 'zen_sudoku_prefetched_v1';
 
@@ -89,6 +90,7 @@ const inFlight = new Map<Difficulty, Promise<void>>();
 
 /** Generate the next puzzle of this difficulty in the background so "new game" starts instantly. */
 export function prefetchPuzzle(difficulty: Difficulty): void {
+  if (DIFFICULTY_CONFIG[difficulty].pooled) return;
   if (inFlight.has(difficulty) || readPrefetched()[difficulty]) return;
   const job = generateInWorker(difficulty)
     .then((puzzle) => writePrefetched({ ...readPrefetched(), [difficulty]: puzzle }))
@@ -100,6 +102,7 @@ export function prefetchPuzzle(difficulty: Difficulty): void {
 }
 
 export async function generatePuzzleAsync(difficulty: Difficulty): Promise<GeneratedPuzzle> {
+  if (DIFFICULTY_CONFIG[difficulty].pooled) return pickExtremePuzzle();
   // Reuse a running prefetch instead of starting a second worker for the same level
   const running = inFlight.get(difficulty);
   if (running) await running;

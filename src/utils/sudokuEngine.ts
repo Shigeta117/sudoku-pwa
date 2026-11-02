@@ -7,7 +7,14 @@ import { CellData, Difficulty } from '../types/sudoku';
  */
 export const DIFFICULTY_CONFIG: Record<
   Difficulty,
-  { label: string; jaLabel: string; level: CoreLevel; techniques: string }
+  {
+    label: string;
+    jaLabel: string;
+    level: CoreLevel;
+    techniques: string;
+    /** Picked from the bundled pool (src/data/pool) instead of generated on the device */
+    pooled?: boolean;
+  }
 > = {
   easy: {
     label: 'Easy',
@@ -39,6 +46,14 @@ export const DIFFICULTY_CONFIG: Record<
     level: 'L10',
     techniques: 'チェーン系（XY-Chain・AIC）が必要',
   },
+  // Same top level as 鬼, but only puzzles that need chains 12 times or more (top ~3.5% of L10)
+  extreme: {
+    label: 'Extreme',
+    jaLabel: '極',
+    level: 'L10',
+    techniques: 'チェーンを 12 回以上つながないと解けない',
+    pooled: true,
+  },
 };
 
 export type GeneratedPuzzle = { puzzle: number[][]; solution: number[][] };
@@ -60,6 +75,9 @@ export function toGrid(flat: Array<number | null>): number[][] {
  * (this runs in a Web Worker, off the UI thread).
  */
 export function generatePuzzle(difficulty: Difficulty): GeneratedPuzzle {
+  if (DIFFICULTY_CONFIG[difficulty].pooled) {
+    throw new Error(`${difficulty} puzzles come from the bundled pool`);
+  }
   const flat = generate(DIFFICULTY_CONFIG[difficulty].level, { timeoutMs: 60_000 });
   const solved = solve(flat);
   if (!solved.solved || !solved.board) {

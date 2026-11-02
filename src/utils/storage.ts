@@ -7,6 +7,7 @@ import {
   StatsRecord,
   UserSettings,
 } from '../types/sudoku';
+import { parseChallenge } from './puzzlePool';
 
 const GAME_STATE_KEY = 'zen_sudoku_saved_game_v1';
 // v2: difficulty is rated by technique (sudoku-core) since 2026-10, so v1 best times are not comparable
@@ -29,6 +30,7 @@ export const DEFAULT_STATS: StatsRecord = {
   hard: { gamesPlayed: 0, gamesWon: 0, bestTimeSeconds: null, totalTimeSeconds: 0 },
   expert: { gamesPlayed: 0, gamesWon: 0, bestTimeSeconds: null, totalTimeSeconds: 0 },
   master: { gamesPlayed: 0, gamesWon: 0, bestTimeSeconds: null, totalTimeSeconds: 0 },
+  extreme: { gamesPlayed: 0, gamesWon: 0, bestTimeSeconds: null, totalTimeSeconds: 0 },
 };
 
 const isDigit = (v: unknown, min: number): v is number =>
@@ -75,6 +77,9 @@ export function parseSavedGame(raw: unknown): SavedGameState | null {
   if (s.version !== 1) return null;
   if (!DIFFICULTIES.includes(s.difficulty as Difficulty)) return null;
   if (!isNineByNine(s.board, isCell)) return null;
+  // A broken challenge must not turn into a normal game that counts in the stats
+  const challenge = parseChallenge(s.challenge);
+  if (s.challenge !== undefined && !challenge) return null;
   const history =
     Array.isArray(s.history) && s.history.every(isSnapshot)
       ? (s.history as BoardSnapshot[])
@@ -96,6 +101,7 @@ export function parseSavedGame(raw: unknown): SavedGameState | null {
     hintsUsed: num(s.hintsUsed),
     isCompleted: s.isCompleted === true,
     lastUpdatedAt: num(s.lastUpdatedAt),
+    challenge,
   };
 }
 
